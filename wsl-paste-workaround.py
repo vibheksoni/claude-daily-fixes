@@ -1,7 +1,32 @@
 """
 This script allows you to paste images when using claude code through the wsl.
 
+!! >> THIS SCRIPT IS DESIGNED TO RUN ON WINDOWS ONLY << !!
 !! >> I RECOMMEND YOU RUN THIS SCRIPT WITH ADMIN PRIVILEGES. << !!
+
+How to use it ?
+1. Install python
+2. Create a virtual environment
+```
+python -m venv .venv
+```
+3. Activate the virtual environment
+Windows:
+```
+.venv\Scripts\activate
+```
+Linux:
+```
+source .venv/bin/activate
+```
+4. Install the dependencies
+```
+pip install -r requirements.txt
+```
+5. Run the script
+```
+python wsl-paste-workaround.py /path/to/your/project
+```
 
 How does it work ?
 
@@ -24,6 +49,7 @@ import sys
 import threading
 import time
 import ctypes
+import argparse
 from datetime import datetime, timedelta
 from pathlib import Path
 from ctypes import wintypes
@@ -38,12 +64,40 @@ except ImportError:
     sys.exit(1)
 
 
-if len(sys.argv) != 2:
-    base_path = input("Provide the directory path: ")
-    if not os.path.exists(base_path):
-        exit(0)
+def convert_to_wsl_path(windows_path):
+    """Convert Windows path to WSL path format.
+    
+    Args:
+        windows_path (str): Windows-style path (e.g., C:\\Users\\...)
+        
+    Returns:
+        str: WSL-style path (e.g., /mnt/c/Users/...)
+    """
+    path = Path(windows_path).resolve()
+    
+    if path.drive:
+        drive_letter = path.drive[0].lower()
+        relative_path = str(path)[2:].replace('\\', '/')
+        return f"/mnt/{drive_letter}{relative_path}"
+    
+    return str(path).replace('\\', '/')
+
+parser = argparse.ArgumentParser(description='Clipboard Image Saver with WSL path support')
+parser.add_argument('path', nargs='?', help='Directory path for saving images')
+parser.add_argument('--wsl', action='store_true', help='Use WSL/Linux path format instead of Windows format')
+
+args = parser.parse_args()
+
+if args.path:
+    base_path = args.path
 else:
-    base_path = sys.argv[1]
+    base_path = input("Provide the directory path: ")
+
+if not os.path.exists(base_path):
+    print(f"Path does not exist: {base_path}")
+    exit(0)
+
+USE_WSL_PATHS = args.wsl
 
 normalized_base_path = base_path.rstrip('/\\')
 if not normalized_base_path.endswith('sharedclaude'):
@@ -245,6 +299,9 @@ def process_clipboard_image(use_full_path: bool = False):
         text_to_paste = (
             str(filepath.resolve()) if use_full_path else f"@sharedclaude/{filename}"
         )
+        
+        if USE_WSL_PATHS and use_full_path:
+            text_to_paste = convert_to_wsl_path(text_to_paste)
 
         if set_clipboard_text(text_to_paste):
             print(f"Clipboard updated with path: {text_to_paste}")
@@ -321,7 +378,10 @@ def main():
 
     print("Images will be auto-deleted after 5 minutes")
     print("Press Shift+Insert to paste @sharedclaude/<filename>")
-    print("Press Ctrl+Shift+Insert to paste full absolute path")
+    if USE_WSL_PATHS:
+        print("Press Ctrl+Shift+Insert to paste full WSL path (Linux format)")
+    else:
+        print("Press Ctrl+Shift+Insert to paste full Windows path")
     print("Press Ctrl+C to stop")
     print()
 

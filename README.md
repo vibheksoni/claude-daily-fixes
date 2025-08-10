@@ -31,13 +31,20 @@ pip install -r requirements.txt
 # Run with admin privileges (recommended)
 python wsl-paste-workaround.py /path/to/your/project
 
+# Use WSL/Linux path format instead of Windows paths
+python wsl-paste-workaround.py /path/to/your/project --wsl
+
 # Or provide path interactively
 python wsl-paste-workaround.py
 ```
 
+**Command Line Options:**
+- `--wsl`: When enabled, Ctrl+Shift+Insert will paste Linux-style paths (e.g., `/mnt/c/Users/...`) instead of Windows paths (e.g., `C:\Users\...`). Useful when working in WSL terminals that expect Linux path format.
+
 **How it works:**
 - If path doesn't end with `sharedclaude`, creates that subdirectory automatically
-- Press Shift+Insert to capture clipboard image
+- Press Shift+Insert to capture clipboard image and paste `@sharedclaude/filename.png`
+- Press Ctrl+Shift+Insert to paste full absolute path (Windows or WSL format based on `--wsl` flag)
 - Images auto-delete after 5 minutes
 - Press Ctrl+C to stop
 
