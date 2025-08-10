@@ -9,7 +9,9 @@ Basically you provide it the path you are working in. If the path doesn't end wi
 it will automatically create a 'sharedclaude' subdirectory. Images are saved there and it will
 auto paste the @sharedclaude/{filename}.png into the terminal.
 
-The hotkey is Shift+Insert so we dont mess with the regular paste hotkey.
+Hotkeys:
+- Shift+Insert: paste the shorthand path `@sharedclaude/{filename}.png`
+- Ctrl+Shift+Insert: paste the full absolute file path to the saved image
 """
 
 
@@ -52,10 +54,12 @@ else:
 CLEANUP_INTERVAL = 30
 IMAGE_LIFETIME = 5 * 60
 HOTKEY_ID = 1
+HOTKEY_ID_FULL = 2
 
 shutdown_flag = threading.Event()
 
 MOD_SHIFT = 0x0004
+MOD_CONTROL = 0x0002
 VK_INSERT = 0x2D
 WM_HOTKEY = 0x0312
 
@@ -208,8 +212,13 @@ def cleanup_worker():
             cleanup_old_images()
 
 
-def process_clipboard_image():
-    """Main function to process clipboard image."""
+def process_clipboard_image(use_full_path: bool = False):
+    """Main function to process clipboard image.
+
+    Args:
+        use_full_path (bool): When True, paste the absolute file path. When False,
+            paste the shorthand `@sharedclaude/{filename}`.
+    """
     try:
         print("Processing clipboard...")
 
@@ -233,9 +242,12 @@ def process_clipboard_image():
         image.save(filepath, "PNG")
         print(f"Image saved: {filepath}")
 
-        filename_with_at = f"@sharedclaude/{filename}"
-        if set_clipboard_text(filename_with_at):
-            print(f"Clipboard updated with path: {filename_with_at}")
+        text_to_paste = (
+            str(filepath.resolve()) if use_full_path else f"@sharedclaude/{filename}"
+        )
+
+        if set_clipboard_text(text_to_paste):
+            print(f"Clipboard updated with path: {text_to_paste}")
 
             time.sleep(0.15)
             if send_paste():
@@ -250,21 +262,34 @@ def process_clipboard_image():
 
 
 def setup_hotkey():
-    """Register global hotkey Shift+Insert.
+    """Register global hotkeys.
+    - Shift+Insert for shorthand path paste
+    - Ctrl+Shift+Insert for full absolute path paste
+
     Returns:
-        bool: True if the hotkey was successfully registered, False otherwise.
+        bool: True if at least one hotkey was successfully registered, False otherwise.
     """
-    if not user32.RegisterHotKey(None, HOTKEY_ID, MOD_SHIFT, VK_INSERT):
+    registered_any = False
+
+    if user32.RegisterHotKey(None, HOTKEY_ID, MOD_SHIFT, VK_INSERT):
+        registered_any = True
+    else:
+        print("Failed to register Shift+Insert. It may be in use by another application.")
+
+    if user32.RegisterHotKey(None, HOTKEY_ID_FULL, MOD_SHIFT | MOD_CONTROL, VK_INSERT):
+        registered_any = True
+    else:
         print(
-            "Failed to register hotkey. Make sure no other application is using Shift+Insert."
+            "Failed to register Ctrl+Shift+Insert. It may be in use by another application."
         )
-        return False
-    return True
+
+    return registered_any
 
 
 def cleanup_hotkey():
-    """Unregister global hotkey."""
+    """Unregister global hotkeys."""
     user32.UnregisterHotKey(None, HOTKEY_ID)
+    user32.UnregisterHotKey(None, HOTKEY_ID_FULL)
 
 
 def signal_handler(signum, frame):
@@ -295,7 +320,8 @@ def main():
     cleanup_thread.start()
 
     print("Images will be auto-deleted after 5 minutes")
-    print("Press Shift+Insert to save clipboard image")
+    print("Press Shift+Insert to paste @sharedclaude/<filename>")
+    print("Press Ctrl+Shift+Insert to paste full absolute path")
     print("Press Ctrl+C to stop")
     print()
 
@@ -309,6 +335,11 @@ def main():
                     print("Shift+Insert detected!")
                     threading.Thread(
                         target=process_clipboard_image, daemon=True
+                    ).start()
+                elif msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID_FULL:
+                    print("Ctrl+Shift+Insert detected!")
+                    threading.Thread(
+                        target=process_clipboard_image, args=(True,), daemon=True
                     ).start()
                 elif msg.message == 0x0012:
                     break
